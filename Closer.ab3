@@ -1,0 +1,332 @@
+; XTRA
+; Embedded .xtra Header
+; 
+; General Info
+; -------------------------------------------------------
+; ExePath         = "Closer"
+; ExeFile         = "Closer"
+; CreateIcon      = 1
+; Residents       = "amigalibs.res"
+; 
+; Compiler
+; -------------------------------------------------------
+; StringBuffer    = 10240
+; MakeSmallest    = 0
+; FuncOptimize    = 1
+; Version         = 0.0.0
+; NumberOfBuilds  = 109
+; 
+; Debugger
+; -------------------------------------------------------
+; CliArgs         = ""
+; StackSize       = 80000
+; RuntimeDebug    = 0
+; DebugInfo       = 0
+; CreateDbgFile   = 65535
+; OverflowCheck   = 0
+; AssemblerCheck  = 0
+; InterruptCheck  = 1
+; AutoRun         = 1
+; 
+; Editor
+; -------------------------------------------------------
+; CursorLine      = 181
+; CursorColumn    = 19
+; LabelSearch     = ""
+; LabelRemark     = 0
+; LabelAll        = 0
+; LabelPosition   = 0
+; 
+; Blitz Objects
+; -------------------------------------------------------
+; Max File        = 5
+; Max GadgetList  = 5
+; Max Queue       = 10
+; Max Screen      = 5
+; Max Shape       = 100
+; Max CopList     = 10
+; Max Sprite      = 20
+; Max Stencil     = 5
+; Max Module      = 5
+; Max Window      = 20
+; Max Anim        = 10
+; Max Sound       = 10
+; Max Bank        = 5
+; Max Buffer      = 10
+; Max Slice       = 10
+; Max Page        = 4
+; Max Tape        = 5
+; Max IntuiFont   = 5
+; Max MedModule   = 8
+; Max Palette     = 4
+; Max MenuList    = 5
+; Max BlitzFont   = 4
+; Max GTList      = 20
+; Max BitMap      = 10
+; Max IconInfo    = 1
+; Max NChunky     = 50
+; Max MUIObject   = 50
+; Max PTModule    = 5
+; Max AsyncReq    = 4
+; Max Req-Lib     = 5
+; Max GTMenuList  = 5
+; Max Console     = 5
+; Max TCPSock     = 5
+; Max XBSound     = 10
+; Max Chunky      = 20
+; /XTRA
+
+Syntax 2 ; Remove this for Blitz 2 use
+
+ver$ = "$VER: Closer 1.0 (07.07.2023) Window closing tool"
+vernum$ = "1.0"
+
+WBStartup
+WbToScreen 0
+
+DEFTYPE .Window *win
+
+NEWTYPE .coord
+  x.q
+  y.q
+End NEWTYPE
+
+NEWTYPE .win
+  address.l
+  x.w
+  y.w
+  width.w
+  height.w
+  title.s
+End NEWTYPE
+
+Dim List winlist.win(0)
+
+*scr.Screen = Peek.l(Addr Screen(0))
+
+If *scr = 0 Then End
+
+
+; Function to get the width of a string using the window's current font
+Function.w stringpixels{text$}
+  SHARED *win
+
+  result.w = TextLength_(*win\RPort, text$, Len(text$))
+
+  Function Return result
+End Function
+
+
+; Function to populate list of currently open windows and return window count
+Function.w listwindows{}
+  SHARED winlist(), *scr
+
+  wincount.w = 0
+
+  *nextwin.Window = *scr\FirstWindow
+
+  While *nextwin ; We repeat this until we don't have any more windows to look at
+    wincount + 1
+    If AddItem(winlist())
+      winlist()\address = *nextwin
+      winlist()\x = *nextwin\LeftEdge
+      winlist()\y = *nextwin\TopEdge
+      winlist()\width = *nextwin\Width
+      winlist()\height = *nextwin\Height
+      winlist()\title = Peek$(*nextwin\Title)
+      *nextwin = *nextwin\NextWindow
+    End If
+  End While
+
+  Function Return wincount
+End Function
+
+
+; Length of the animation
+steps.q = 5
+
+Dim moves.coord(steps)
+
+sw.w = ScreenWidth
+sh.w = ScreenHeight
+
+
+; We need to get the screen font so we can use the same font for the window contents (otherwise it'll be Topaz)
+If *scr
+  *scfont.TextAttr = *scr\Font
+  If *scfont
+    fontname$ = Peek$(*scfont.TextAttr\ta_Name)
+    ysize.w = *scfont.TextAttr\ta_YSize
+  Else
+    NPrint "Cant find screen font!"
+  End If
+Else
+  NPrint "Cant find screen 0!"
+End If
+
+; Now we load the font
+screenfont.b = False
+If Exists("FONTS:" + fontname$)
+  LoadFont 0, fontname$, ysize
+  screenfont = True
+End If
+
+
+
+
+; We want our window internal size to be 100 x 50 pixels
+; so we add the border sizes to get the overall window dimensions
+winbl.w = *scr\WBorLeft
+winbr.w = *scr\WBorRight
+winbt.w = *scr\WBorTop
+winbb.w = *scr\WBorBottom
+
+; The top border also needs the screen's font height added
+*scrfont.TextAttr = *scr\Font
+
+fonth.w = *scrfont\ta_YSize
+winbt + fonth
+
+; Inner dimensions we want for the window
+iw.w = 140
+ih.w = 30 + fonth
+
+; Now we can calculate the actual size of the window
+winw.w = iw + winbl + winbr
+winh.w = ih + winbt + winbb
+
+
+;NPrint winbt
+;NPrint winbl
+
+;NPrint winw
+;NPrint winh
+
+winx.w = sw / 2 - winw / 2
+winy.w = sh / 2 - winh / 2
+
+
+
+
+; Set up our Intuition menus
+
+GTMenuTitle 0, 0, "Project"
+GTMenuItem 0, 0, 0, 0, "Start", "S"
+GTMenuItem 0, 0, 0, 1
+GTMenuItem 0, 0, 0, 2, "About...", "?"
+GTMenuItem 0, 0, 0, 3
+GTMenuItem 0, 0, 0, 4, "Quit", "Q"
+
+winflags.l = #WFLG_DRAGBAR|#WFLG_DEPTHGADGET|#WFLG_CLOSEGADGET|#WFLG_ACTIVATE|#WFLG_NEWLOOKMENUS
+
+
+*win.Window = Window(0, winx, winy, winw, winh, winflags, "Closer", 1, 2)
+
+If *win = 0 Then End
+
+If screenfont Then WindowFont 0
+
+button$ = "Start"
+
+
+; Now work out the gadget size, taking the size of the word "Start" into account in the current font
+
+gadh.w = fonth + 6
+gadw.w = stringpixels{button$} + 20
+
+GTButton 0, 0, iw / 2 - gadw / 2, ih / 2 - gadh / 2, gadw, gadh, button$, #PLACETEXT_IN
+
+AttachGTList 0, 0
+
+GTBevelBox 0, 0, 0, iw, ih, 0
+
+
+; Attach our menu strip
+GTSetMenu 0
+
+
+DefaultOutput
+
+quit.b = False
+Repeat
+  ev.l = WaitEvent
+  Select ev
+    Case #IDCMP_GADGETUP
+      ; We only have one gadget so we don't need to check which one was clicked...
+      wincount.w = listwindows{}
+
+;      ; Give some debug output listing all windows to the console
+;      DefaultOutput
+;      NPrint wincount, " windows:"
+;      ResetList winlist()
+;      While NextItem(winlist())
+;        NPrint winlist()\title
+;        NPrint winlist()\x
+;        NPrint winlist()\y
+;        NPrint winlist()\width
+;        NPrint winlist()\height
+;        NPrint ""
+;      End While
+                                                                                                                                                                                                                                                    
+      Gosub calculatepath
+      Gosub movemouse
+
+    Case #IDCMP_DELTAMOVE
+      NPrint "Delta move: ", WindowX, ", ", WindowY
+
+    Case #IDCMP_CLOSEWINDOW
+      quit = True
+
+    Case #IDCMP_MENUPICK
+      Select ItemHit
+        Case 0 ; Start
+          wincount.w = listwindows{}
+          Gosub calculatepath
+          Gosub movemouse
+        Case 2 ; About
+          x.l = Request("Closer " + vernum$, "A sophisticated window closing program||Entry for the Amiga Tool Jam 2023!||www.robthenerd.com", "Continue")
+        Case 4 ; Quit
+          quit = True
+      End Select
+    Case #IDCMP_MENUHELP
+      NPrint "Menuhelp"
+      NPrint ItemHit
+  End Select
+Until quit
+
+End
+
+
+.calculatepath
+  winx = WindowX
+  winy = WindowY
+  targetx.w = winx + 10
+  targety.w = winy + winbt / 2
+  startmousex.w = SMouseX
+  startmousey.w = SMouseY
+  distx.w = targetx - startmousex ;- targetx
+  disty.w = targety - startmousey ;- targety
+  dx.q = distx / steps
+  dy.q = disty / steps
+  moves(0)\x = startmousex
+  moves(0)\y = startmousey
+  For i.w = 1 To steps
+    moves(i)\x = moves(i - 1)\x + dx
+    moves(i)\y = moves(i - 1)\y + dy
+    ;NPrint "Point ", moves(i)\x, ", ", moves(i)\y
+  Next i
+Return
+
+.movemouse
+  For i = 1 To steps
+    AbsMouse moves(i)\x, moves(i)\y
+  Next i
+  Delay_ 10
+  AbsMouse targetx, targety - 2
+  MouseButton 0, On
+  Delay_ 10
+  AbsMouse targetx, targety
+  MouseButton 0, Off
+                                                                                                                                                                                                                                                        
+Return
+
